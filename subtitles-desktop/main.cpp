@@ -37,6 +37,7 @@ HFONT font = CreateFontW(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, ANTIALIAS
 HWND wnd;
 NOTIFYICONDATAW iconData = {};
 HWND dummyParent;
+HANDLE instanceMutex;
 
 COLORREF backgroundColor = RGB(255, 255, 255);
 COLORREF subtitleForeground = RGB(255, 255, 0);
@@ -405,6 +406,21 @@ loop_start:;
 }
 
 
+bool EnsureSingleInstance()
+{
+    instanceMutex = OpenMutexW(MUTEX_ALL_ACCESS, 0, L"subtitles-desktop");
+
+    if (!instanceMutex)
+    {
+        // We rely on windows deleting the mutex when this process exits
+        instanceMutex = CreateMutexW(0, 0, L"subtitles-desktop");
+        return true;
+    }
+
+    return false;
+}
+
+
 /*
 * TODO:
 *  [X] Remove old code
@@ -417,6 +433,12 @@ loop_start:;
 */
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nShowCmd)
 {
+    if (!EnsureSingleInstance())
+    {
+        MessageBoxW(0, L"An instance is already running.", L"Instance already running", MB_OK | MB_ICONWARNING);
+        return 0;
+    }
+
     //CreateThread(0, 0, WindowThread, 0, 0, 0);
     CreateThread(0, 0, ServerThread, 0, 0, 0);
 
