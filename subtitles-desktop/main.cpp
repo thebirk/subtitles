@@ -33,42 +33,43 @@ SendHttpResponse(
 LPWSTR str = L"";
 int strLen = 0;
 
-HFONT font = CreateFontW(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, NONANTIALIASED_QUALITY, 0, L"Consolas");
+HFONT font = CreateFontW(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, ANTIALIASED_QUALITY, 0, L"Consolas");
 HWND wnd;
+NOTIFYICONDATAW iconData = {};
 
 COLORREF backgroundColor = RGB(255, 0, 255);
 
+void RemoveTray(NOTIFYICONDATAW* iconData);
 LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = 0;
 
     switch (msg)
     {
-    // Rerender, I suspect we do this constantly given the render over the entire screen ordeal.
+    // Rerender
     case WM_PAINT: {
-        OutputDebugStringA("henlo\n");
-        //HDC dc = GetDC(hwnd);
         PAINTSTRUCT ps = {};
         BeginPaint(hwnd, &ps);
         SelectObject(ps.hdc, font);
         SetBkMode(ps.hdc, TRANSPARENT);
         SetTextColor(ps.hdc, RGB(255, 255, 255));
-        //TextOut(dc, 2560/2, 1440-200, L"Hello", 5);
 
-        //BeginPath(ps.hdc);
-        RECT rect = {};
-        GetClientRect(hwnd, &rect);
-        rect.left = 2560/2;
-        rect.top = 1440 - 800;
-        DrawTextW(ps.hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP | DT_CALCRECT);
+        if (strLen > 0) {
+            //BeginPath(ps.hdc);
+            RECT rect = {};
+            GetClientRect(hwnd, &rect);
+            rect.left = 2560/2;
+            rect.top = 1440 - 800;
+            DrawTextW(ps.hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP | DT_CALCRECT);
 
-        FillRect(ps.hdc, &rect, CreateSolidBrush(RGB(100, 100, 100)));
-        DrawTextW(ps.hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP);
-        //EndPath(ps.hdc);
-        //StrokeAndFillPath(ps.hdc);
+            FillRect(ps.hdc, &rect, CreateSolidBrush(RGB(100, 100, 100)));
+            DrawTextW(ps.hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP);
+            //EndPath(ps.hdc);
+            //StrokeAndFillPath(ps.hdc);
+        }
+
 
         EndPaint(hwnd, &ps);
-        //ReleaseDC(hwnd, dc);
     } break;
     
     // A new subtitle has been recieved
@@ -95,6 +96,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         switch (LOWORD(wparam))
         {
         case IDM_EXIT: {
+            RemoveTray(&iconData);
             PostQuitMessage(0);
             printf("IDM_EXIT\n");
         } break;
@@ -112,6 +114,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             HMENU menu = CreatePopupMenu();
             InsertMenuW(menu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDM_EXIT, L"Exit");
+            SetForegroundWindow(wnd);
             TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_BOTTOMALIGN, click.x, click.y, 0, wnd, 0);
         } break;
         }
@@ -167,8 +170,6 @@ DWORD WindowThread(LPVOID param)
     //SetLayeredWindowAttributes(wnd, backgroundColor, 127, LWA_ALPHA);
     //BLENDFUNCTION blendFunc = { AC_SRC_OVER, 0, 0, AC_SRC_ALPHA };
     //UpdateLayeredWindow(wnd, 0, 0, 0, 0, 0, RGB(255, 0, 255), &blendFunc, ULW_COLORKEY | ULW_ALPHA);
-
-    NOTIFYICONDATAW iconData = {};
     AddTray(&iconData);
 
     // Cover entire screen. TODO: Fetch proper screen size
@@ -182,7 +183,6 @@ DWORD WindowThread(LPVOID param)
         TranslateMessage(&msg);
 
         if (msg.message == WM_QUIT) {
-            RemoveTray(&iconData);
             // Pray that ServerThread goes down
             ExitProcess(msg.wParam);
             break;
