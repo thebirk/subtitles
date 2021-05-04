@@ -1,7 +1,8 @@
+const DEBUG = false;
 let observer = new MutationObserver(onMutation);
 
 function onMutation(objects, observer) {
-    console.log("onMutation");
+    if (DEBUG) console.log("onMutation");
     let subtitles = [];
 
     for (let i = 0; i < objects.length; i++) {
@@ -19,6 +20,7 @@ function onMutation(objects, observer) {
 
     fetch("http://localhost:4007/subtitles", {
         method: 'POST',
+        mode: 'no-cors',
         headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
@@ -27,16 +29,30 @@ function onMutation(objects, observer) {
     });
 }
 
+function observerObserver() {
+    if (DEBUG) console.log("observerObserver");
+    const timedText = document.getElementsByClassName('player-timedtext')[0];
+    if (!timedText) {
+        if (DEBUG) console.log("observerObserver - timedText is dead");
+        observer.disconnect();
+        setTimeout(hook, 100);
+        return;
+    }
+    if (DEBUG) console.log("observerObserver - we go again");
+    setTimeout(observerObserver, 1000);
+}
+
 function hook() {
-    console.log("hook...");
+    if (DEBUG) console.log("hook...");
     const timedText = document.getElementsByClassName('player-timedtext')[0];
     if (!timedText) {
         setTimeout(hook, 1000);
         return;
     }
 
-    console.log("starting observer");
+    if (DEBUG) console.log("starting observer");
     observer.observe(timedText, { childList: true });
+    setTimeout(observerObserver, 1000);
 }
 
 hook();
