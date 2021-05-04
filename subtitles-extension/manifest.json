@@ -1,0 +1,7 @@
+{
+  "name": "Remote Subtitles",
+  "description": "Display subtitles outside of your browser",
+  "version": "1.0",
+  "manifest_version": 3,
+  "content_scripts": [{"matches": ["*://*.netflix.com/watch*"], "js": ["content.js"]}]
+}
