@@ -18,15 +18,16 @@ function onMutation(objects, observer) {
         }
     }
 
-    fetch("http://localhost:4007/subtitles", {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify(subtitles.join(""))
-    });
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', "http://localhost:4007/subtitles", true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Access-Control-Allow-Origin', '*');
+    xhr.timeout = 200;
+    xhr.ontimeout = (e) => { };
+    xhr.onabort = (e) => { };
+    xhr.onerror = (e) => { };
+    xhr.send(JSON.stringify(subtitles.join("")));
 }
 
 function observerObserver() {

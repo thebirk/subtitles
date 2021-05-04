@@ -611,6 +611,12 @@ DWORD SendHttpPostResponse(
     //
     INITIALIZE_HTTP_RESPONSE(&response, 200, "OK");
 
+    // FIXME: LEAK: This leaks sizeof(PHTTP_UNKNOWN_HEADER)*3 every request
+    RESERVE_UNKNOWN_HEADERS(response, 3);
+    SET_UNKNOWN_HEADER(response, 0, "Access-Control-Allow-Origin", "*");
+    SET_UNKNOWN_HEADER(response, 1, "Access-Control-Allow-Headers", "*");
+    SET_UNKNOWN_HEADER(response, 2, "Access-Control-Allow-Methods", "*");
+
     //
     // For POST, echo back the entity from the
     // client
