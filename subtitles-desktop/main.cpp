@@ -33,9 +33,10 @@ SendHttpResponse(
 LPWSTR str = L"";
 int strLen = 0;
 
-HFONT font = CreateFont(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, 0, 0, L"Consolas");
+HFONT font = CreateFontW(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, NONANTIALIASED_QUALITY, 0, L"Consolas");
 HWND wnd;
 
+COLORREF backgroundColor = RGB(255, 0, 255);
 
 LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -45,19 +46,29 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     {
     // Rerender, I suspect we do this constantly given the render over the entire screen ordeal.
     case WM_PAINT: {
-        HDC dc = GetDC(hwnd);
-        SelectObject(dc, font);
-        SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, RGB(255, 255, 255));
+        OutputDebugStringA("henlo\n");
+        //HDC dc = GetDC(hwnd);
+        PAINTSTRUCT ps = {};
+        BeginPaint(hwnd, &ps);
+        SelectObject(ps.hdc, font);
+        SetBkMode(ps.hdc, TRANSPARENT);
+        SetTextColor(ps.hdc, RGB(255, 255, 255));
         //TextOut(dc, 2560/2, 1440-200, L"Hello", 5);
 
+        //BeginPath(ps.hdc);
         RECT rect = {};
         GetClientRect(hwnd, &rect);
-        rect.left = 200;
+        rect.left = 2560/2;
         rect.top = 1440 - 800;
-        DrawText(dc, str, strLen, &rect, DT_CENTER | DT_NOCLIP);
+        DrawTextW(ps.hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP | DT_CALCRECT);
 
-        ReleaseDC(hwnd, dc);
+        FillRect(ps.hdc, &rect, CreateSolidBrush(RGB(100, 100, 100)));
+        DrawTextW(ps.hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP);
+        //EndPath(ps.hdc);
+        //StrokeAndFillPath(ps.hdc);
+
+        EndPaint(hwnd, &ps);
+        //ReleaseDC(hwnd, dc);
     } break;
     
     // A new subtitle has been recieved
@@ -147,12 +158,15 @@ DWORD WindowThread(LPVOID param)
     wndClass.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
     wndClass.lpfnWndProc = wndProc;
     wndClass.lpszClassName = L"mywindow";
-    wndClass.hbrBackground = CreateSolidBrush(RGB(255, 0, 255));
+    wndClass.hbrBackground = CreateSolidBrush(backgroundColor);
     RegisterClassW(&wndClass);
 
     wnd = CreateWindowW(L"mywindow", L"nope", WS_POPUP|WS_VISIBLE, 200, 200, 500, 500, dummyParent, 0, 0, 0);
     SetWindowLongW(wnd, GWL_EXSTYLE, WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW);
-    SetLayeredWindowAttributes(wnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
+    SetLayeredWindowAttributes(wnd, backgroundColor, 0, LWA_COLORKEY);
+    //SetLayeredWindowAttributes(wnd, backgroundColor, 127, LWA_ALPHA);
+    //BLENDFUNCTION blendFunc = { AC_SRC_OVER, 0, 0, AC_SRC_ALPHA };
+    //UpdateLayeredWindow(wnd, 0, 0, 0, 0, 0, RGB(255, 0, 255), &blendFunc, ULW_COLORKEY | ULW_ALPHA);
 
     NOTIFYICONDATAW iconData = {};
     AddTray(&iconData);
