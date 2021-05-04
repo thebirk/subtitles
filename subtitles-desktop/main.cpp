@@ -155,6 +155,14 @@ DWORD WindowThread(LPVOID param)
     return 0;
 }
 
+
+/*
+* TODO:
+*  [ ] Remove old code
+*  [ ] Clean up state
+*  [ ] Add hotkeys and a tray icon/menu
+* 
+*/
 int main()
 {
     DWORD renderThreadId = 0;
