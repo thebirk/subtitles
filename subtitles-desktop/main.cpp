@@ -43,6 +43,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
     switch (msg)
     {
+    // Rerender, I suspect we do this constantly given the render over the entire screen ordeal.
     case WM_PAINT: {
         HDC dc = GetDC(hwnd);
         SelectObject(dc, font);
@@ -59,6 +60,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         ReleaseDC(hwnd, dc);
     } break;
     
+    // A new subtitle has been recieved
     case WM_SUBTITLE_UPDATED: {
         int wideLen = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)wparam, lparam, 0, 0);
         LPWSTR wideBuffer = (LPWCH)HeapAlloc(GetProcessHeap(), 0, (sizeof(WCHAR) * wideLen));
@@ -71,11 +73,13 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         InvalidateRect(hwnd, 0, TRUE);
     } break;
 
+    // Something to do with ignoring input, forget if we still need it
     case WM_NCACTIVATE: {
         result = 0;
         break;
     }
 
+    // Popup menu
     case WM_COMMAND: {
         switch (LOWORD(wparam))
         {
@@ -86,6 +90,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
     } break;
 
+    // Tray icon
     case WM_USER_SHELLICON: {
         switch (LOWORD(lparam))
         {
@@ -109,23 +114,28 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return result;
 }
 
-void AddTray()
+void AddTray(NOTIFYICONDATAW *iconData)
 {
-    NOTIFYICONDATAW iconData = {};
-    iconData.cbSize = sizeof(NOTIFYICONDATAW);
-    iconData.hIcon = (HICON)LoadImageW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDI_ICON1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
-    iconData.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
-    iconData.hWnd = wnd;
-    iconData.uCallbackMessage = WM_USER_SHELLICON;
-    iconData.uID = 123;
-    iconData.uVersion = NOTIFYICON_VERSION;
-    RtlZeroMemory(iconData.szTip, sizeof(iconData.szTip));
-    memcpy_s(iconData.szTip, sizeof(L"Subtitles"), L"Subtitles", sizeof(L"Subtitles"));
-    Shell_NotifyIconW(NIM_ADD, &iconData);
+    iconData->cbSize = sizeof(NOTIFYICONDATAW);
+    iconData->hIcon = (HICON)LoadImageW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDI_ICON1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
+    iconData->uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
+    iconData->hWnd = wnd;
+    iconData->uCallbackMessage = WM_USER_SHELLICON;
+    iconData->uID = 123;
+    iconData->uVersion = NOTIFYICON_VERSION;
+    RtlZeroMemory(iconData->szTip, sizeof(iconData->szTip));
+    memcpy_s(iconData->szTip, sizeof(L"Subtitles"), L"Subtitles", sizeof(L"Subtitles"));
+    Shell_NotifyIconW(NIM_ADD, iconData);
+}
+
+void RemoveTray(NOTIFYICONDATAW* iconData)
+{
+    Shell_NotifyIconW(NIM_DELETE, iconData);
 }
 
 DWORD WindowThread(LPVOID param)
 {
+    // We create an invisible dummy parent window so out overlay wont appear on the taskbar and in the alt+tab menu
     WNDCLASS dummyParentClass = {};
     dummyParentClass.lpfnWndProc = DefWindowProc;
     dummyParentClass.lpszClassName = L"dummyParent";
@@ -144,8 +154,10 @@ DWORD WindowThread(LPVOID param)
     SetWindowLongW(wnd, GWL_EXSTYLE, WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW);
     SetLayeredWindowAttributes(wnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
 
-    AddTray();
+    NOTIFYICONDATAW iconData = {};
+    AddTray(&iconData);
 
+    // Cover entire screen. TODO: Fetch proper screen size
     MONITORINFO monitor = {};
     GetMonitorInfo(MonitorFromWindow(wnd, MONITOR_DEFAULTTOPRIMARY), &monitor);
     SetWindowPos(wnd, HWND_TOPMOST, 0, 0, 2560, 1440, 0);
@@ -156,7 +168,9 @@ DWORD WindowThread(LPVOID param)
         TranslateMessage(&msg);
 
         if (msg.message == WM_QUIT) {
-            TerminateProcess(GetCurrentProcess(), msg.wParam);
+            RemoveTray(&iconData);
+            // Pray that ServerThread goes down
+            ExitProcess(msg.wParam);
             break;
         }
 
@@ -182,8 +196,6 @@ DWORD ServerThread(LPVOID param)
     if (!request) return 123;
     DWORD bytesRead;
 
-    CreateEventW(0, FALSE, FALSE, L"");
-
 loop_start:;
     for (;;) {
         RtlZeroMemory(request, requestBufferLength);
@@ -197,22 +209,7 @@ loop_start:;
 
                 auto value = json_parse(request->pEntityChunks->FromMemory.pBuffer, request->pEntityChunks->FromMemory.BufferLength);
 
-                /*
-                if (value->type != json_type_array) goto error;
-
-                json_array_s* array = (json_array_s*)value->payload;
-                if (!array) goto error;
-                for (json_array_element_s* it = array->start; it != nullptr; it = it->next) {
-                    if (!it->value) goto error;
-                    if (it->value->type != json_type_string) goto error;
-
-                    auto string = (json_string_s*)it->value->payload;
-                    printf("%.*s", (unsigned int)string->string_size, string->string);
-                    if (!it->next) printf("\n");
-                    PostMessage(wnd, WM_SUBTITLE_UPDATED, (WPARAM)string->string, string->string_size);
-                }
-                */
-
+                if (!value) goto error;
                 if (value->type != json_type_string) goto error;
 
                 auto string = (json_string_s*)value->payload;
@@ -227,7 +224,7 @@ loop_start:;
         } break;
         default: {
         error:;
-            SendHttpResponse(requestQueue, request, 503, "Not Implemented", NULL);
+            SendHttpResponse(requestQueue, request, 500, "Bad Request", NULL);
         } break;
         }
 
@@ -247,25 +244,20 @@ loop_start:;
 *    [ ] Hotkey
 * 
 */
-int main()
+int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nShowCmd)
 {
     //CreateThread(0, 0, WindowThread, 0, 0, 0);
     CreateThread(0, 0, ServerThread, 0, 0, 0);
 
     WindowThread(0);
-    
+
     return 0;
 }
 
 
 
 
-
-
-
-
-
-
+// Lots of junk down here, mostly copied from MSDN
 ////////////////
 #define MAX_ULONG_STR ((ULONG) sizeof("4294967295"))
 
