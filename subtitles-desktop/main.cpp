@@ -1,4 +1,5 @@
 #include "json.h"
+#include "resource.h"
 
 #define UNICODE
 #include <winsock2.h>
@@ -27,52 +28,14 @@ SendHttpResponse(
 );
 
 #define WM_SUBTITLE_UPDATED (WM_USER+1)
+#define WM_USER_SHELLICON (WM_USER+2)
 
 LPWSTR str = L"";
 int strLen = 0;
 
-void Draw(HDC dc)
-{
-    SelectObject(dc, CreateFont(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, 0, 0, L"Consolas"));
-    TextOut(dc, 400, 400, str, strLen);
-}
-
-DWORD RenderThread(LPVOID param)
-{
-    for (;;) {
-        MSG msg;
-        if (PeekMessage(&msg, 0, 0, 0, PM_REMOVE) != 0) {
-            TranslateMessage(&msg);
-
-            switch (msg.message) {
-            case WM_SUBTITLE_UPDATED: {
-                printf("WM_SUBTITLE_UPDATED\n");
-
-                int wideLen = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)msg.wParam, msg.lParam, 0, 0);
-                LPWSTR wideBuffer = (LPWCH)HeapAlloc(GetProcessHeap(), 0, (sizeof(WCHAR) * wideLen));
-                if (!wideBuffer) continue;
-                MultiByteToWideChar(CP_UTF8, 0, (LPCCH)msg.wParam, msg.lParam, wideBuffer, wideLen);
-
-                str = wideBuffer;
-                strLen = wideLen;
-                HDC dc = GetDC(0);
-                Draw(dc);
-            } break;
-            }
-
-            DispatchMessage(&msg);
-        }
-
-        DwmFlush();
-        HDC dc = GetDC(0);
-        Draw(dc);
-    }
-
-    return 0;
-}
-
 HFONT font = CreateFont(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, 0, 0, L"Consolas");
 HWND wnd;
+
 
 LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -113,6 +76,31 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         break;
     }
 
+    case WM_COMMAND: {
+        switch (LOWORD(wparam))
+        {
+        case IDM_EXIT: {
+            PostQuitMessage(0);
+            printf("IDM_EXIT\n");
+        } break;
+        }
+    } break;
+
+    case WM_USER_SHELLICON: {
+        switch (LOWORD(lparam))
+        {
+        case WM_RBUTTONDOWN: {
+            UINT uFlag = MF_BYPOSITION | MF_STRING;
+            POINT click = {};
+            GetCursorPos(&click);
+
+            HMENU menu = CreatePopupMenu();
+            InsertMenuW(menu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDM_EXIT, L"Exit");
+            TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_BOTTOMALIGN, click.x, click.y, 0, wnd, 0);
+        } break;
+        }
+    } break;
+
     default:
         result = DefWindowProc(hwnd, msg, wparam, lparam);
         break;
@@ -121,12 +109,27 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return result;
 }
 
+void AddTray()
+{
+    NOTIFYICONDATAW iconData = {};
+    iconData.cbSize = sizeof(NOTIFYICONDATAW);
+    iconData.hIcon = (HICON)LoadImageW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDI_ICON1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
+    iconData.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
+    iconData.hWnd = wnd;
+    iconData.uCallbackMessage = WM_USER_SHELLICON;
+    iconData.uID = 123;
+    iconData.uVersion = NOTIFYICON_VERSION;
+    RtlZeroMemory(iconData.szTip, sizeof(iconData.szTip));
+    memcpy_s(iconData.szTip, sizeof(L"Subtitles"), L"Subtitles", sizeof(L"Subtitles"));
+    Shell_NotifyIconW(NIM_ADD, &iconData);
+}
+
 DWORD WindowThread(LPVOID param)
 {
     WNDCLASS dummyParentClass = {};
     dummyParentClass.lpfnWndProc = DefWindowProc;
     dummyParentClass.lpszClassName = L"dummyParent";
-    RegisterClass(&dummyParentClass);
+    RegisterClassW(&dummyParentClass);
 
     HWND dummyParent = CreateWindowW(L"dummyParent", L"", 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
@@ -135,11 +138,13 @@ DWORD WindowThread(LPVOID param)
     wndClass.lpfnWndProc = wndProc;
     wndClass.lpszClassName = L"mywindow";
     wndClass.hbrBackground = CreateSolidBrush(RGB(255, 0, 255));
-    RegisterClass(&wndClass);
+    RegisterClassW(&wndClass);
 
     wnd = CreateWindowW(L"mywindow", L"nope", WS_POPUP|WS_VISIBLE, 200, 200, 500, 500, dummyParent, 0, 0, 0);
     SetWindowLongW(wnd, GWL_EXSTYLE, WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW);
     SetLayeredWindowAttributes(wnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
+
+    AddTray();
 
     MONITORINFO monitor = {};
     GetMonitorInfo(MonitorFromWindow(wnd, MONITOR_DEFAULTTOPRIMARY), &monitor);
@@ -147,28 +152,23 @@ DWORD WindowThread(LPVOID param)
     
 
     MSG msg;
-    while (GetMessage(&msg, wnd, 0, 0) != 0) {
+    while (GetMessageW(&msg, wnd, 0, 0) != 0) {
         TranslateMessage(&msg);
-        DispatchMessage(&msg);
+
+        if (msg.message == WM_QUIT) {
+            TerminateProcess(GetCurrentProcess(), msg.wParam);
+            break;
+        }
+
+        DispatchMessageW(&msg);
     }
 
     return 0;
 }
 
 
-/*
-* TODO:
-*  [ ] Remove old code
-*  [ ] Clean up state
-*  [ ] Add hotkeys and a tray icon/menu
-* 
-*/
-int main()
+DWORD ServerThread(LPVOID param)
 {
-    DWORD renderThreadId = 0;
-    //CreateThread(0, 0, RenderThread, 0, 0, &renderThreadId);
-    CreateThread(0, 0, WindowThread, 0, 0, 0);
-
     HttpInitialize(HTTPAPI_VERSION_1, HTTP_INITIALIZE_SERVER, 0);
 
     HANDLE requestQueue;
@@ -182,7 +182,9 @@ int main()
     if (!request) return 123;
     DWORD bytesRead;
 
-    loop_start:;
+    CreateEventW(0, FALSE, FALSE, L"");
+
+loop_start:;
     for (;;) {
         RtlZeroMemory(request, requestBufferLength);
 
@@ -231,6 +233,27 @@ int main()
 
         HTTP_SET_NULL_ID(&reqId);
     }
+    return 0;
+}
+
+
+/*
+* TODO:
+*  [X] Remove old code
+*  [ ] Clean up state
+*  [ ] Add hotkeys and a tray icon/menu
+*    [X] Basic menu
+*    [ ] Settings dialog
+*    [ ] Hotkey
+* 
+*/
+int main()
+{
+    //CreateThread(0, 0, WindowThread, 0, 0, 0);
+    CreateThread(0, 0, ServerThread, 0, 0, 0);
+
+    WindowThread(0);
+    
     return 0;
 }
 

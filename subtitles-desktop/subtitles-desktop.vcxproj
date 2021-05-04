@@ -104,6 +104,15 @@
     <ClInclude Include="json.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </ClInclude>
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="icon.png" />
+    <Image Include="icon32.ico" />
+    <Image Include="icon32.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="subtitles-desktop.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

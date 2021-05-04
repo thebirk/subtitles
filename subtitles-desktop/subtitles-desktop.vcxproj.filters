@@ -23,5 +23,24 @@
     <ClInclude Include="json.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="icon.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="icon32.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="icon32.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="subtitles-desktop.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>
