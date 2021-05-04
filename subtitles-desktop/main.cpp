@@ -45,6 +45,13 @@ BOOL drawBackground = TRUE;
 UINT windowAlpha = 200;
 BOOL optionsOpen = FALSE;
 
+void CloseDialog(HWND dialog)
+{
+    optionsOpen = FALSE;
+    EndDialog(dialog, 0);
+    InvalidateRect(wnd, 0, TRUE);
+}
+
 LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = FALSE;
@@ -75,14 +82,14 @@ LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
 
         result = TRUE;
     } break;
+    case WM_CLOSE: {
+        CloseDialog(hwnd);
+    } break;
     case WM_COMMAND: {
         switch (LOWORD(wparam))
         {
-        case WM_CLOSE: // fallthrough
         case IDOK: {
-            optionsOpen = FALSE;
-            EndDialog(hwnd, 0);
-            InvalidateRect(wnd, 0, TRUE);
+            CloseDialog(hwnd);
         } break;
         case IDC_FOREGROUNDCOLOR: {
             CHOOSECOLORW picker = {};
@@ -148,9 +155,6 @@ LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
         } break;
         }
         result = TRUE;
-    } break;
-    case WM_CLOSE: {
-        EndDialog(hwnd, 0);
     } break;
     }
 
