@@ -30,7 +30,7 @@ SendHttpResponse(
 #define WM_SUBTITLE_UPDATED (WM_USER+1)
 #define WM_USER_SHELLICON (WM_USER+2)
 
-LPWSTR str = L"";
+LPWSTR str = 0;
 int strLen = 0;
 
 HFONT font = CreateFontW(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, ANTIALIASED_QUALITY, 0, L"Consolas");
@@ -203,7 +203,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             int strLen = sizeof(str) / sizeof(str[0]);
             DrawSubtitle(&ps, hwnd, str, strLen);
         }
-        else if (strLen > 0) {
+        else if (str && strLen > 0) {
             DrawSubtitle(&ps, hwnd, str, strLen);
         }
 
@@ -218,6 +218,10 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         if (!wideBuffer) break;
         MultiByteToWideChar(CP_UTF8, 0, (LPCCH)wparam, lparam, wideBuffer, wideLen);
 
+        if (str)
+        {
+            HeapFree(GetProcessHeap(), 0, str);
+        }
         str = wideBuffer;
         strLen = wideLen;
 
@@ -507,6 +511,7 @@ DWORD SendHttpResponse(
     //
     ADD_KNOWN_HEADER(response, HttpHeaderContentType, "text/html");
 
+    // FIXME: LEAK: This leaks sizeof(PHTTP_UNKNOWN_HEADER)*3 every request
     RESERVE_UNKNOWN_HEADERS(response, 3);
     SET_UNKNOWN_HEADER(response, 0, "Access-Control-Allow-Origin", "*");
     SET_UNKNOWN_HEADER(response, 1, "Access-Control-Allow-Headers", "*");
