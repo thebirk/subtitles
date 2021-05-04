@@ -36,8 +36,147 @@ int strLen = 0;
 HFONT font = CreateFontW(48, 0, 0, 0, 0, FALSE, FALSE, FALSE, 0, 0, 0, ANTIALIASED_QUALITY, 0, L"Consolas");
 HWND wnd;
 NOTIFYICONDATAW iconData = {};
+HWND dummyParent;
 
-COLORREF backgroundColor = RGB(255, 0, 255);
+COLORREF backgroundColor = RGB(255, 255, 255);
+COLORREF subtitleForeground = RGB(255, 255, 0);
+COLORREF subtitleBackground = RGB(0, 0, 0);
+BOOL drawBackground = TRUE;
+UINT windowAlpha = 200;
+BOOL optionsOpen = FALSE;
+
+LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    LRESULT result = FALSE;
+
+    switch (msg)
+    {
+    case WM_INITDIALOG: {
+        optionsOpen = TRUE;
+        SendDlgItemMessageW(hwnd, IDC_BACKGROUNDCHECK, BM_SETCHECK, drawBackground ? BST_CHECKED : BST_UNCHECKED, 0);
+        WCHAR buffer[16] = {};
+        swprintf_s(buffer, 16, L"%d", windowAlpha);
+        SendDlgItemMessageW(hwnd, IDC_TRANSPARENCY, WM_SETTEXT, 0, (LPARAM)buffer);
+
+        RECT parent = {};
+        RECT dialog = {};
+        GetWindowRect(wnd, &parent);
+        GetWindowRect(hwnd, &dialog);
+
+        int cx = dialog.right - dialog.left;
+        int cy = dialog.bottom - dialog.top;
+        int pcx = parent.right - parent.left;
+        int pcy = parent.bottom - parent.top;
+
+        int x = pcx / 2 - cx / 2;
+        int y = pcy / 2 - cy / 2;
+
+        SetWindowPos(hwnd, 0, x, y, 0, 0, SWP_NOSIZE);
+
+        result = TRUE;
+    } break;
+    case WM_COMMAND: {
+        switch (LOWORD(wparam))
+        {
+        case WM_CLOSE: // fallthrough
+        case IDOK: {
+            optionsOpen = FALSE;
+            EndDialog(hwnd, 0);
+            InvalidateRect(wnd, 0, TRUE);
+        } break;
+        case IDC_FOREGROUNDCOLOR: {
+            CHOOSECOLORW picker = {};
+            picker.lStructSize = sizeof(picker);
+            picker.hwndOwner = hwnd;
+            picker.rgbResult = subtitleForeground;
+            picker.Flags = CC_RGBINIT | CC_SOLIDCOLOR | CC_FULLOPEN;
+            static COLORREF custColors[16] = {};
+            picker.lpCustColors = custColors;
+            if (ChooseColorW(&picker) != 0)
+            {
+                subtitleForeground = picker.rgbResult;
+                InvalidateRect(wnd, 0, TRUE);
+            }
+        } break;
+        case IDC_BACKGROUNDCOLOR: {
+            CHOOSECOLORW picker = {};
+            picker.lStructSize = sizeof(picker);
+            picker.hwndOwner = hwnd;
+            picker.rgbResult = subtitleBackground;
+            picker.Flags = CC_RGBINIT | CC_SOLIDCOLOR | CC_FULLOPEN;
+            static COLORREF custColors[16] = {};
+            picker.lpCustColors = custColors;
+            if (ChooseColorW(&picker) != 0)
+            {
+                subtitleBackground = picker.rgbResult;
+                InvalidateRect(wnd, 0, TRUE);
+            }
+        } break;
+        case IDC_BACKGROUNDCHECK: {
+            switch (HIWORD(wparam))
+            {
+            case BN_CLICKED: {
+                drawBackground = SendDlgItemMessageW(hwnd, IDC_BACKGROUNDCHECK, BM_GETCHECK, 0, 0);
+                InvalidateRect(wnd, 0, TRUE);
+            } break;
+            }
+        } break;
+        case IDC_TRANSPARENCY: {
+            switch (HIWORD(wparam))
+            {
+            case EN_CHANGE: {
+                WCHAR buffer[16] = {};
+                SendDlgItemMessageW(hwnd, IDC_TRANSPARENCY, WM_GETTEXT, sizeof(buffer), (LPARAM)buffer);
+
+                int val = _wtoi(buffer);
+                if (val < 0)
+                {
+                    SendDlgItemMessageW(hwnd, IDC_TRANSPARENCY, WM_SETTEXT, 0, (LPARAM)L"0");
+                    break;
+                }
+                if (val > 255)
+                {
+                    SendDlgItemMessageW(hwnd, IDC_TRANSPARENCY, WM_SETTEXT, 0, (LPARAM)L"255");
+                    break;
+                }
+
+                windowAlpha = val;
+                SetLayeredWindowAttributes(wnd, backgroundColor, windowAlpha, LWA_COLORKEY | LWA_ALPHA);
+                InvalidateRect(wnd, 0, TRUE);
+            } break;
+            }
+        } break;
+        }
+        result = TRUE;
+    } break;
+    case WM_CLOSE: {
+        EndDialog(hwnd, 0);
+    } break;
+    }
+
+    return result;
+}
+
+void DrawSubtitle(PAINTSTRUCT *ps, HWND hwnd, WCHAR* str, int strLen)
+{
+    SelectObject(ps->hdc, font);
+    SetBkMode(ps->hdc, TRANSPARENT);
+    SetTextColor(ps->hdc, subtitleForeground);
+
+    RECT rect = {};
+    GetClientRect(hwnd, &rect);
+    rect.left = 2560 / 2;
+    rect.top = 1440 - 400;
+    DrawTextW(ps->hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP | DT_CALCRECT);
+
+    OffsetRect(&rect, -((rect.right - rect.left) / 2), 0);
+
+    if (drawBackground)
+    {
+        FillRect(ps->hdc, &rect, CreateSolidBrush(subtitleBackground));
+    }
+    DrawTextW(ps->hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP);
+}
 
 void RemoveTray(NOTIFYICONDATAW* iconData);
 LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
@@ -52,20 +191,16 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         BeginPaint(hwnd, &ps);
         SelectObject(ps.hdc, font);
         SetBkMode(ps.hdc, TRANSPARENT);
-        SetTextColor(ps.hdc, RGB(255, 255, 255));
+        SetTextColor(ps.hdc, subtitleForeground);
 
-        if (strLen > 0) {
-            //BeginPath(ps.hdc);
-            RECT rect = {};
-            GetClientRect(hwnd, &rect);
-            rect.left = 2560/2;
-            rect.top = 1440 - 800;
-            DrawTextW(ps.hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP | DT_CALCRECT);
-
-            FillRect(ps.hdc, &rect, CreateSolidBrush(RGB(100, 100, 100)));
-            DrawTextW(ps.hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP);
-            //EndPath(ps.hdc);
-            //StrokeAndFillPath(ps.hdc);
+        if (optionsOpen)
+        {
+            WCHAR str[] = L"This is a test subtitle\nLorem ipsum";
+            int strLen = sizeof(str) / sizeof(str[0]);
+            DrawSubtitle(&ps, hwnd, str, strLen);
+        }
+        else if (strLen > 0) {
+            DrawSubtitle(&ps, hwnd, str, strLen);
         }
 
 
@@ -86,10 +221,10 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     } break;
 
     // Something to do with ignoring input, forget if we still need it
-    case WM_NCACTIVATE: {
-        result = 0;
-        break;
-    }
+    //case WM_NCACTIVATE: {
+    //    result = 0;
+    //    break;
+    //}
 
     // Popup menu
     case WM_COMMAND: {
@@ -100,6 +235,12 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             PostQuitMessage(0);
             printf("IDM_EXIT\n");
         } break;
+        case IDM_OPTIONS: {
+            if (!optionsOpen)
+            {
+                DialogBoxW(0, MAKEINTRESOURCEW(IDD_DIALOG1), dummyParent, optionsDlgProc);
+            }
+        } break;
         }
     } break;
 
@@ -107,12 +248,20 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     case WM_USER_SHELLICON: {
         switch (LOWORD(lparam))
         {
+        case WM_LBUTTONDBLCLK: {
+            if (!optionsOpen)
+            {
+                SendMessageW(hwnd, WM_COMMAND, IDM_OPTIONS, 0);
+            }
+        } break;
         case WM_RBUTTONDOWN: {
             UINT uFlag = MF_BYPOSITION | MF_STRING;
             POINT click = {};
             GetCursorPos(&click);
 
             HMENU menu = CreatePopupMenu();
+            InsertMenuW(menu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDM_OPTIONS,  L"Options");
+            InsertMenuW(menu, 0xFFFFFFFF, MF_BYPOSITION | MF_SEPARATOR, 0, 0);
             InsertMenuW(menu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDM_EXIT, L"Exit");
             SetForegroundWindow(wnd);
             TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_BOTTOMALIGN, click.x, click.y, 0, wnd, 0);
@@ -155,7 +304,7 @@ DWORD WindowThread(LPVOID param)
     dummyParentClass.lpszClassName = L"dummyParent";
     RegisterClassW(&dummyParentClass);
 
-    HWND dummyParent = CreateWindowW(L"dummyParent", L"", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    dummyParent = CreateWindowW(L"dummyParent", L"", 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     WNDCLASSW wndClass = {};
     wndClass.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
@@ -166,7 +315,7 @@ DWORD WindowThread(LPVOID param)
 
     wnd = CreateWindowW(L"mywindow", L"nope", WS_POPUP|WS_VISIBLE, 200, 200, 500, 500, dummyParent, 0, 0, 0);
     SetWindowLongW(wnd, GWL_EXSTYLE, WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW);
-    SetLayeredWindowAttributes(wnd, backgroundColor, 0, LWA_COLORKEY);
+    SetLayeredWindowAttributes(wnd, backgroundColor, windowAlpha, LWA_COLORKEY|LWA_ALPHA);
     //SetLayeredWindowAttributes(wnd, backgroundColor, 127, LWA_ALPHA);
     //BLENDFUNCTION blendFunc = { AC_SRC_OVER, 0, 0, AC_SRC_ALPHA };
     //UpdateLayeredWindow(wnd, 0, 0, 0, 0, 0, RGB(255, 0, 255), &blendFunc, ULW_COLORKEY | ULW_ALPHA);
