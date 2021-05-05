@@ -83,6 +83,30 @@ LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
 
         result = TRUE;
     } break;
+    case WM_CTLCOLORSTATIC: {
+        HDC dc = (HDC)wparam;
+        HWND control = (HWND)lparam;
+
+        LONG id = GetWindowLongW(control, GWL_ID);
+
+        switch (id)
+        {
+        case IDC_FGCOLOR: {
+            SetBkColor(dc, subtitleForeground);
+            result = (INT_PTR)CreateSolidBrush(subtitleForeground);
+            RECT rect = {};
+            GetClientRect(control, &rect);
+            FillRect(dc, &rect, (HBRUSH)result);
+        } break;
+        case IDC_BGCOLOR: {
+            SetBkColor(dc, subtitleBackground);
+            result = (INT_PTR)CreateSolidBrush(subtitleBackground);
+            RECT rect = {};
+            GetClientRect(control, &rect);
+            FillRect(dc, &rect, (HBRUSH)result);
+        } break;
+        }
+    } break;
     case WM_CLOSE: {
         CloseDialog(hwnd);
     } break;
@@ -103,7 +127,10 @@ LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             if (ChooseColorW(&picker) != 0)
             {
                 subtitleForeground = picker.rgbResult;
+                // invalidate overlay to redraw subtitle
                 InvalidateRect(wnd, 0, TRUE);
+                // invalidate dialog to redraw color preview
+                InvalidateRect(hwnd, 0, TRUE);
             }
         } break;
         case IDC_BACKGROUNDCOLOR: {
@@ -117,7 +144,10 @@ LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             if (ChooseColorW(&picker) != 0)
             {
                 subtitleBackground = picker.rgbResult;
+                // invalidate overlay to redraw subtitle
                 InvalidateRect(wnd, 0, TRUE);
+                // invalidate dialog to redraw color preview
+                InvalidateRect(hwnd, 0, TRUE);
             }
         } break;
         case IDC_BACKGROUNDCHECK: {
@@ -125,6 +155,7 @@ LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             {
             case BN_CLICKED: {
                 drawBackground = SendDlgItemMessageW(hwnd, IDC_BACKGROUNDCHECK, BM_GETCHECK, 0, 0);
+                // invalidate overlay to redraw subtitle
                 InvalidateRect(wnd, 0, TRUE);
             } break;
             }
@@ -424,10 +455,10 @@ bool EnsureSingleInstance()
 /*
 * TODO:
 *  [X] Remove old code
-*  [ ] Clean up state
+*  [X] Clean up state
 *  [ ] Add hotkeys and a tray icon/menu
 *    [X] Basic menu
-*    [ ] Settings dialog
+*    [X] Settings dialog
 *    [ ] Hotkey
 * 
 */
@@ -439,7 +470,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
         return 0;
     }
 
-    //CreateThread(0, 0, WindowThread, 0, 0, 0);
     CreateThread(0, 0, ServerThread, 0, 0, 0);
 
     WindowThread(0);
