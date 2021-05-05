@@ -39,7 +39,8 @@ NOTIFYICONDATAW iconData = {};
 HWND dummyParent;
 HANDLE instanceMutex;
 
-COLORREF backgroundColor = RGB(255, 255, 255);
+// TODO: Dont let users set this color
+COLORREF backgroundColor = RGB(254, 254, 254);
 COLORREF subtitleForeground = RGB(255, 255, 0);
 COLORREF subtitleBackground = RGB(0, 0, 0);
 BOOL drawBackground = TRUE;
@@ -392,7 +393,7 @@ DWORD ServerThread(LPVOID param)
     HttpCreateHttpHandle(&requestQueue, 0);
     HttpAddUrl(requestQueue, L"http://localhost:4007/subtitles", 0);
 
-    HTTP_REQUEST_ID reqId;
+    HTTP_REQUEST_ID reqId = {};
     HTTP_SET_NULL_ID(&reqId);
     int requestBufferLength = sizeof(HTTP_REQUEST) + 2048;
     PHTTP_REQUEST request = (PHTTP_REQUEST)HeapAlloc(GetProcessHeap(), 0, requestBufferLength);
