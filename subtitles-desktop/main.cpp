@@ -7,6 +7,8 @@
 #include <http.h>
 #include <dwmapi.h>
 #include <CommCtrl.h>
+#include <windowsx.h>
+
 #pragma comment(lib, "Httpapi.lib")
 #pragma comment(lib, "dwmapi.lib")
 
@@ -27,7 +29,7 @@ SendHttpResponse(
     IN PSTR          pEntity
 );
 
-#define WM_SUBTITLE_UPDATED (WM_USER+1)
+#define WM_NEW_SUBTITLE (WM_USER+1)
 #define WM_USER_SHELLICON (WM_USER+2)
 
 LPWSTR str = 0;
@@ -80,7 +82,32 @@ LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
         int x = pcx / 2 - cx / 2;
         int y = pcy / 2 - cy / 2;
 
+        // Center
         SetWindowPos(hwnd, 0, x, y, 0, 0, SWP_NOSIZE);
+
+        { // Populate monitor list
+            EnumDisplayMonitors(0, 0, [](HMONITOR monitor, HDC dc, LPRECT rect, LPARAM param) -> BOOL {
+                MONITORINFOEXW info = {};
+                info.cbSize = sizeof(MONITORINFOEXW);
+
+                OutputDebugStringW(L"MONITOR\n");
+                
+                if (!GetMonitorInfoW(monitor, &info)) return TRUE;
+
+                int index = SendDlgItemMessageW((HWND) param, IDC_MONITORCOMBO, CB_ADDSTRING, 0, (LPARAM) info.szDevice);
+                SendDlgItemMessageW((HWND)param, IDC_MONITORCOMBO, CB_SETITEMDATA, index, (LPARAM) monitor);
+
+                return TRUE;
+            }, (LPARAM) hwnd);
+
+            // Select first item
+            SendDlgItemMessageW(hwnd, IDC_MONITORCOMBO, CB_SETCURSEL, (WPARAM)0, (LPARAM)0);
+        }
+
+        // Buddy transparency and spinner, set range
+        HWND spin = GetDlgItem(hwnd, IDC_SPINTRANSPARENCY);
+        SendMessageW(spin, UDM_SETBUDDY, (WPARAM) GetDlgItem(hwnd, IDC_TRANSPARENCY), 0);
+        SendMessageW(spin, UDM_SETRANGE32, 0, 255);
 
         result = TRUE;
     } break;
@@ -186,6 +213,22 @@ LRESULT CALLBACK optionsDlgProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
             } break;
             }
         } break;
+        case IDC_MONITORCOMBO: {
+            switch (HIWORD(wparam))
+            {
+            case CBN_SELENDOK: {
+                HWND box = (HWND)lparam;
+                int selected = SendMessageW(box, CB_GETCURSEL, 0, 0);
+                HMONITOR monitor = (HMONITOR)SendMessageW(box, CB_GETITEMDATA, selected, 0);
+
+                MONITORINFOEXW info = {};
+                info.cbSize = sizeof(info);
+                GetMonitorInfoW(monitor, &info);
+
+                SetWindowPos(wnd, 0, info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top, 0);
+            } break;
+            }
+        } break;
         }
         result = TRUE;
     } break;
@@ -200,10 +243,18 @@ void DrawSubtitle(PAINTSTRUCT *ps, HWND hwnd, WCHAR* str, int strLen)
     SetBkMode(ps->hdc, TRANSPARENT);
     SetTextColor(ps->hdc, subtitleForeground);
 
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO info = {};
+    info.cbSize = sizeof(info);
+    GetMonitorInfo(monitor, &info);
+
+    int cx = info.rcMonitor.right - info.rcMonitor.left;
+    int cy = info.rcMonitor.bottom - info.rcMonitor.top;
+
     RECT rect = {};
     GetClientRect(hwnd, &rect);
-    rect.left = 2560 / 2;
-    rect.top = 1440 - 400;
+    rect.left = cx / 2;
+    rect.top = cy - 400;
     DrawTextW(ps->hdc, str, strLen, &rect, DT_CENTER | DT_NOCLIP | DT_CALCRECT);
 
     OffsetRect(&rect, -((rect.right - rect.left) / 2), 0);
@@ -245,7 +296,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     } break;
     
     // A new subtitle has been recieved
-    case WM_SUBTITLE_UPDATED: {
+    case WM_NEW_SUBTITLE: {
         int wideLen = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)wparam, lparam, 0, 0);
         LPWSTR wideBuffer = (LPWCH)HeapAlloc(GetProcessHeap(), 0, (sizeof(WCHAR) * wideLen));
         if (!wideBuffer) break;
@@ -362,7 +413,7 @@ DWORD WindowThread(LPVOID param)
     //UpdateLayeredWindow(wnd, 0, 0, 0, 0, 0, RGB(255, 0, 255), &blendFunc, ULW_COLORKEY | ULW_ALPHA);
     AddTray(&iconData);
 
-    // Cover entire screen. TODO: Fetch proper screen size
+    // Cover entire screen. TODO: Fetch proper screen size. Config
     MONITORINFO monitor = {};
     GetMonitorInfo(MonitorFromWindow(wnd, MONITOR_DEFAULTTOPRIMARY), &monitor);
     SetWindowPos(wnd, HWND_TOPMOST, 0, 0, 2560, 1440, 0);
@@ -418,7 +469,7 @@ loop_start:;
 
                 auto string = (json_string_s*)value->payload;
                 printf("%.*s", (unsigned int)string->string_size, string->string);
-                PostMessage(wnd, WM_SUBTITLE_UPDATED, (WPARAM)string->string, string->string_size);
+                PostMessage(wnd, WM_NEW_SUBTITLE, (WPARAM)string->string, string->string_size);
             }
 
             SendHttpPostResponse(requestQueue, request);
