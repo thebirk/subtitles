@@ -13,7 +13,6 @@
 #define IDC_FGCOLOR                     1008
 #define IDC_BGCOLOR                     1009
 #define IDC_MONITORCOMBO                1011
-#define IDC_SPIN3                       1015
 #define IDC_SPINTRANSPARENCY            1015
 
 // Next default values for new objects
